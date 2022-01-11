@@ -1,0 +1,159 @@
+# api-gateway
+
+An API stands for Application Program Interface. It is a set of instructions, protocols, and tools for building software applications
+API Gateway is also responsible for request routing, composition, and protocol translation.
+All the requests made by the client go through the API Gateway. After that, the API Gateway routes requests to the appropriate microservice.
+We can implement common features like authentication, routing, rate limiting, auditing, and logging in the API Gateway.
+
+->Zuul API Gateway
+Zuul Server is an API Gateway application. It handles all the requests and performs the dynamic routing of microservice applications.
+
+->Setting up Zuul API Gateway Server
+
+Step 1: Open Spring Initializr https://start.spring.io.
+Step 2: Provide the Artifact. We have provided netflix-zuul-api-gateway-server.
+Step 3: Add the following dependencies: Zuul, Eureka Discovery, Actuator, and DevTools.
+Step 4: Open the NetflixZuulApiGatewayServerApplication.java file and enable zuul proxy and discovery client by using the annotations @EnableZuulProxy and @EnableDiscoveryClient, respectively.
+
+import org.springframework.boot.autoconfigure.SpringBootApplication;  
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;  
+import org.springframework.cloud.netflix.zuul.EnableZuulProxy;  
+@EnableZuulProxy  
+@EnableDiscoveryClient  
+@SpringBootApplication  
+public class NetflixZuulApiGatewayServerApplication   
+{  
+public static void main(String[] args)   
+{  
+SpringApplication.run(NetflixZuulApiGatewayServerApplication.class, args);  
+}  
+}  
+
+Step 5: Open application.properties file and configure the application name, port, and eureka naming server.
+
+application.properties
+
+spring.application.name=netflix-zuul-api-gateway-server  
+server.port=8765  
+eureka.client.service-url.default-zone=http://localhost:8765/eureka  
+
+
+
+step6:Implementing Zuul Logging Filter
+
+import javax.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import com.netflix.zuul.ZuulFilter;
+import com.netflix.zuul.context.RequestContext;
+import com.netflix.zuul.exception.ZuulException;
+@Component
+public class ZuulLoggingFilter extends ZuulFilter
+{
+//creating Logger object
+private Logger logger=LoggerFactory.getLogger(this.getClass());
+@Override
+public boolean shouldFilter() 
+{
+return true; //executing filter for every request
+}
+//log the content of the request
+@Override
+public Object run() throws ZuulException 
+{
+//getting the current HTTP request that is to be handle
+HttpServletRequest request=RequestContext.getCurrentContext().getRequest();
+//printing the detail of the request
+logger.info("request -> {} request uri-> {}", request, request.getRequestURI());
+return null;
+}
+@Override
+public String filterType() 
+{
+return "pre"; //intercept all the request before execution
+}
+@Override
+public int filterOrder() 
+{
+return 1; //setting filter order to 1
+}
+}
+
+
+
+->Executing a Request through Zuul API Gateway.
+Step 1: Run the netflix-eureka-naming-server.
+
+Step 2: Run the currency-exchange-service on port 8000.
+
+Step 3: Run the currency-conversion-service on port 8100.
+
+Step 4: Run the netflix-zuul-api-gateway-server.
+
+Step 5: Open the browser and invoke the URL http://localhost:8761
+It shows all the services that are registered with the Eureka naming server.
+
+Step 6: Invoke the URL http://localhost:8000/currency-exchange/from/EUR/to/INR
+We get the response, but the request does not go through the Zuul API Gateway.
+
+step7 :To invoke the request through the Zuul API Gateway. We use the following URL: http://localhost:8765/{application-name}/{uri}
+In our case, the application name is currency-exchange-service, and the URI is /currency-exchange/from/EUR/to/INR 
+ie   http://localhost:8765/currency-exchange-service/currency-exchange/from/EUR/to/INR
+at this time, the request is going through the Zuul API Gateway.
+
+
+Eureka server:   http://localhost:8761
+Request through zuul api gateway Get:    http://localhost:8765/currency-exchange-service/currency-exchange/from/EUR/to/INR
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+-->Zuul API Gateway between microservices invocations
+
+In this section, we will call the currency-calculation-service (currency-conversion-service) that calls the currency-exchange-service. 
+Now, we will call it through the Zuul API Gateway instead of directly calling the currency-exchange-service.
+Step 1: Select the project currency-conversion-service.
+
+Step 2: Open the CurrencyExchangeServiceProxy.java file.
+
+Step 3: Enable the Feign by using the annotation @FeignClient with the attribute name="netflix-zuul-api-gateway-server"
+Step 4: Define the mapping for the Zuul API Gateway server.
+import org.springframework.cloud.netflix.ribbon.RibbonClient;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+
+
+@FeignClient(name="netflix-zuul-api-gateway-server")
+@RibbonClient(name="currency-exchange-service") 
+public interface CurrencyExchangeServiceProxy {
+	
+	@GetMapping("currency-exchange-service/currency-exchange/from/{from}/to/{to}")		//where {from} and {to} are path variable
+	public CurrencyConversionBean retrieveExchangeValue(@PathVariable("from") String from, @PathVariable("to") String to);
+
+}
+
+Step 5: Run the netflix-eureka-naming-server, currency-exchange-service, currency-conversion-service, and netflix-zuul-api-gateway-server in the same order
+
+Step 6: Open the browser and invoke the URL http://localhost:8100/currency-converter-feign/from/USD/to/INR/quantity/1000
+step7:Send the request http://localhost:8765
+through the API Gateway. The URI will be /{application-name}/{uri}. The complete URL will look like the following:
+
+http://localhost:8765/currency-conversion-service/currency-converter-feign/from/USD/to/INR/quantity/100
+
+                               Or
+                               
+Invoke the above URL. It returns the same response as the URL http://localhost:8100/currency-converter-feign/from/USD/to/INR/quantity/1000
+returns.         
+
+We can see in the log that the logging filter executes two times. 
+The first time it calls the currency-converter-service and the second time when the currency-converter-service calls the currency-exchange-service.
+
+
+
+
+
+
+
+
